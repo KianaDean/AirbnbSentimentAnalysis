@@ -1,0 +1,91 @@
+---
+title: "RedditAirbnbSentimentAnalysis"
+author: "Kiana"
+date: "7/31/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Reddit Sentiment Analysis
+
+```{r loadPackages, echo = FALSE}
+library(RedditExtractoR)
+library(tm)
+library(syuzhet)
+library(radarchart)
+library(dplyr)
+library(lubridate)
+library(infix)
+```
+
+## Pull reddit posts from r/Airbnb
+
+```{r getRedditPosts}
+links = reddit_urls(search_terms = NA, page_threshold = 50, subreddit = "Airbnb", cn_threshold = 5)
+#links = Datalinks[Datalinks$num_comments>5,]
+```
+
+## Sentiment Scoring
+
+```{r SentimentScoring}
+
+# function to iterate through all posts
+funct = function(i){
+  content = reddit_content(links$URL[i])
+  com = iconv(content$comment, to = 'utf-8')
+  clov = get_nrc_sentiment(com)
+  x1 = 100*colSums(clov)/sum(clov)
+  return(cbind(links[i,], t(x1)))
+
+}
+
+# list the links
+ls = 1:nrow(links)
+
+# loop through all the links and bind to a data frame
+AirbnbRedditSentiment = do.call("rbind", lapply(ls, funct))
+AirbnbRedditSentiment$date = as.Date(res$date, "%d-%m-%y")
+
+# save the sentiment data
+write.csv(AirbnbRedditSentiment,"AirbnbRedditSentiment.csv")
+```
+
+## Exploratory Data Analysis
+
+```{r redditSentimentplot}
+
+# aggregate data by month
+AirbnbRedditSentiment$month = floor_date(res$date, "month")
+
+# summarize all results
+abnbsentiment = AirbnbRedditSentiment %>% group_by(month) %>% summarise(positive = mean(positive), negative = mean(negative)) %>% as.data.frame()
+condition <- c("postive","negative")
+
+# plot results
+barplot(abnbsentiment[,2:3] %>% as.matrix() %>% t(), col=c("green","red"), main = "Sentiment", names.arg = abnbsentiment$month, xlab = "Month", ylab = "Sentiment")
+```
+```{r sentimentScoreHistogram}
+AirbnbRedditSentiment %>%
+  ggplot(aes(x=negative)) + 
+  geom_histogram(binwidth = 1, fill = "lightblue")+ 
+  ylab("Frequency") + 
+  xlab("sentiment score") +
+  ggtitle("Distribution of negative sentiment scores of the tweets") +
+  ggeasy::easy_center_title()
+
+AirbnbRedditSentiment %>%
+  ggplot(aes(x=positive)) + 
+  geom_histogram(binwidth = 1, fill = "pink")+ 
+  ylab("Frequency") + 
+  xlab("sentiment score") +
+  ggtitle("Distribution of positive sentiment scores of the tweets") +
+  ggeasy::easy_center_title()
+```
+
+```{r sentimentBarplot}
+# sum of each emotion
+ barplot(colSums(AirbnbRedditSentiment[,6:13]))
+```

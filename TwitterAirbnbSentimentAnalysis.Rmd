@@ -1,0 +1,292 @@
+---
+title: "AirbnbSentimentAnalysis"
+author: "Kiana"
+date: "7/30/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load packages
+
+```{r loadPackages, echo=FALSE}
+library(twitteR)
+library(ROAuth)
+library(hms)
+library(lubridate) 
+library(tidytext)
+library(textdata)
+library(tm)
+library(wordcloud)
+library(igraph)
+library(glue)
+library(networkD3)
+library(rtweet)
+library(plyr)
+library(stringr)
+library(ggplot2)
+library(ggeasy)
+library(plotly)
+library(dplyr)  
+library(hms)
+library(lubridate) 
+library(magrittr)
+library(tidyverse)
+library(janeaustenr)
+library(widyr)
+library(Rcpp)
+```
+
+## Pull airbnb tweets
+
+You can also embed plots, for example:
+
+```{r pullTweets}
+#Note: Replace below with your credentials following above reference
+api_key <- "api_key"
+api_secret <- "api_secret_key"
+access_token <- "access_token"
+access_token_secret <- "access_secret_token"
+
+#Note: This will ask us permission for direct authentication, type '1' for yes:
+setup_twitter_oauth(api_key,api_secret,access_token,access_token_secret)
+
+# extracting 5000 tweets related to Airbnb
+tweets <- searchTwitter("Airbnb -filter:retweets", n=5000, lang="en")
+n.tweet <- length(tweets)
+
+# convert tweets to a data frame
+tweets.df <- twListToDF(tweets)
+
+tweets.txt <- sapply(tweets, function(t)t$getText())
+# Ignore graphical Parameters to avoid input errors
+tweets.txt <- str_replace_all(tweets.txt,"[^[:graph:]]", " ")
+
+#save the tweets
+write.csv(tweets.df,"AirbnbTweets.csv")
+```
+
+## Pre-processing
+
+```{r preProcessTweets}
+clean.text = function(x)
+{
+  # convert to lower case
+  x = tolower(x)
+  # remove rt
+  x = gsub("rt", "", x)
+  # remove at
+  x = gsub("@\\w+", "", x)
+  # remove punctuation
+  x = gsub("[[:punct:]]", "", x)
+  # remove numbers
+  x = gsub("[[:digit:]]", "", x)
+  # remove links http
+  x = gsub("http\\w+", "", x)
+  # remove tabs
+  x = gsub("[ |\t]{2,}", "", x)
+  # remove blank spaces at the beginning
+  x = gsub("^ ", "", x)
+  # remove blank spaces at the end
+  x = gsub(" $", "", x)
+  # some other cleaning text
+  x = gsub('https://','',x)
+  x = gsub('http://','',x)
+  x = gsub('[^[:graph:]]', ' ',x)
+  x = gsub('[[:punct:]]', '', x)
+  x = gsub('[[:cntrl:]]', '', x)
+  x = gsub('\\d+', '', x)
+  x = str_replace_all(x,"[^[:graph:]]", " ")
+  return(x)
+}
+
+cleanText <- clean.text(tweets.txt)
+# remove empty results (if any)
+idx <- which(cleanText == " ")
+cleanText <- cleanText[cleanText != " "]
+
+# frequency of tweets
+tweets.df %<>% 
+  mutate(
+    created = created %>% 
+      # Remove zeros.
+      str_remove_all(pattern = '\\+0000') %>%
+      # Parse date.
+      parse_date_time(orders = '%y-%m-%d %H%M%S')
+  )
+
+tweets.df %<>% 
+  mutate(Created_At_Round = created%>% round(units = 'hours') %>% as.POSIXct())
+
+tweets.df %>% pull(created) %>% min()
+
+tweets.df %>% pull(created) %>% max()
+```
+
+## Number of tweets per hour
+
+Plot the number of tweets per hour.
+
+```{r TweetsPerHour}
+# plot number of tweets per hour
+plt <- tweets.df %>% 
+  dplyr::count(Created_At_Round) %>% 
+  ggplot(mapping = aes(x = Created_At_Round, y = n)) +
+  theme_light() +
+  geom_line() +
+  xlab(label = 'Date') +
+  ylab(label = NULL) +
+  ggtitle(label = 'Number of Tweets per Hour')
+
+plt %>% ggplotly()
+```
+
+## Sentiment Scoring
+
+Assign a score
+```{r SentimentScoring}
+# load sentiment analysis words
+positive = scan('positive-words.txt', what = 'character', comment.char = ';')
+negative = scan('negative-words.txt', what = 'character', comment.char = ';')
+
+# add your list of words below as you wish if missing in above read lists
+pos.words = c(positive,'upgrade','Congrats','prizes','prize','thanks','thnx',
+              'Grt','gr8','plz','trending','recovering','brainstorm','leader')
+neg.words = c(negative,'wtf','wait','waiting','epicfail','Fight','fighting',
+              'arrest','no','not')
+
+# sentiment scoring function
+score.sentiment = function(sentences, pos.words, neg.words, .progress='none')
+{
+  require(plyr)
+  require(stringr)
+  
+  # we are giving vector of sentences as input. 
+  # plyr will handle a list or a vector as an "l" for us
+  # we want a simple array of scores back, so we use "l" + "a" + "ply" = laply:
+  scores = laply(sentences, function(sentence, pos.words, neg.words) {
+    
+    # clean up sentences with R's regex-driven global substitute, gsub() function:
+    sentence = gsub('https://','',sentence)
+    sentence = gsub('http://','',sentence)
+    sentence = gsub('[^[:graph:]]', ' ',sentence)
+    sentence = gsub('[[:punct:]]', '', sentence)
+    sentence = gsub('[[:cntrl:]]', '', sentence)
+    sentence = gsub('\\d+', '', sentence)
+    sentence = str_replace_all(sentence,"[^[:graph:]]", " ")
+    # and convert to lower case:
+    sentence = tolower(sentence)
+    
+    # split into words. str_split is in the stringr package
+    word.list = str_split(sentence, '\\s+')
+    # sometimes a list() is one level of hierarchy too much
+    words = unlist(word.list)
+    
+    # compare our words to the dictionaries of positive & negative terms
+    pos.matches = match(words, pos.words)
+    neg.matches = match(words, neg.words)
+    
+    # match() returns the position of the matched term or NA
+    # we just want a TRUE/FALSE:
+    pos.matches = !is.na(pos.matches)
+    neg.matches = !is.na(neg.matches)
+    
+    # TRUE/FALSE will be treated as 1/0 by sum():
+    score = sum(pos.matches) - sum(neg.matches)
+    
+    return(score)
+  }, pos.words, neg.words, .progress=.progress )
+  
+  scores.df = data.frame(score=scores, text=sentences)
+  return(scores.df)
+}
+
+# calculate sentiment score
+analysis <- score.sentiment(cleanText, pos.words, neg.words)
+```
+
+Look at sentiment score frequency
+
+```{r sentimentScoreFrequency}
+table(analysis$score)
+```
+
+Histogram of sentiment scores
+
+```{r sentimentScoreHistogram}
+analysis %>%
+  ggplot(aes(x=score)) + 
+  geom_histogram(binwidth = 1, fill = "lightblue")+ 
+  ylab("Frequency") + 
+  xlab("sentiment score") +
+  ggtitle("Distribution of Sentiment scores of the tweets") +
+  ggeasy::easy_center_title()
+```
+Analysis: a majority of the comments were labeled as neutral
+
+Barplot of sentiment types
+
+```{r sentimentBarplot}
+neutral <- length(which(analysis$score == 0))
+positive <- length(which(analysis$score > 0))
+negative <- length(which(analysis$score < 0))
+Sentiment <- c("Positive","Neutral","Negative")
+Count <- c(positive,neutral,negative)
+output <- data.frame(Sentiment,Count)
+output$Sentiment<-factor(output$Sentiment,levels=Sentiment)
+ggplot(output, aes(x=Sentiment,y=Count))+
+  geom_bar(stat = "identity", aes(fill = Sentiment))+
+  ggtitle("Barplot of Sentiment type of 5000 tweets")
+```
+
+Analysis: Majority of the airbnb related tweets are neutral. Positive tweets outweigh the negative tweets but not by a huge margin. There is a less than 500 tweet difference between the two amounts.
+
+Create a word cloud
+
+```{r wordCloud}
+text_corpus <- Corpus(VectorSource(cleanText))
+text_corpus <- tm_map(text_corpus, content_transformer(tolower))
+text_corpus <- tm_map(text_corpus, function(x)removeWords(x,stopwords("english")))
+text_corpus <- tm_map(text_corpus, removeWords, c("airbnb", "get", "got", "can"))
+tdm <- TermDocumentMatrix(text_corpus)
+memory.limit(15000)
+tdm <- as.matrix(tdm)
+tdm <- sort(rowSums(tdm), decreasing = TRUE)
+tdm <- data.frame(word = names(tdm), freq = tdm)
+set.seed(123)
+wordcloud(text_corpus, min.freq = 1, max.words = 100, scale = c(2.2,1),
+          colors=brewer.pal(8, "Dark2"), random.color = T, random.order = F)
+```
+
+Create a word frequency chart
+
+```{r wordFrequency}
+ggplot(tdm[1:20,], aes(x=reorder(word, freq), y=freq)) + 
+  geom_bar(stat="identity") +
+  xlab("Terms") + 
+  ylab("Count") + 
+  coord_flip() +
+  theme(axis.text=element_text(size=7)) +
+  ggtitle('Most common words related to Airbnb tweets') +
+  ggeasy::easy_center_title()
+```
+
+Add sentiment scores to the original dataframe and export the csv file that will be loaded into the PowerBI dashboard.
+
+```{r exportData}
+abnbtweets <- tweets.df
+
+abnbtweets$text <- clean.text(abnbtweets$text)
+
+#remote empty rows
+abnbtweets <- abnbtweets %>%
+  filter(abnbtweets$text != " ")
+
+# calculate and add sentiment score to dataframe
+abnbtweets$score <- score.sentiment(abnbtweets$text, pos.words, neg.words)
+
+# export data file
+write.csv(abnbtweets,"AirbnbTweetsSentiment.csv")
+```
