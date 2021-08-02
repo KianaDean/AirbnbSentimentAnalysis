@@ -2,10 +2,10 @@
 Sentiment analysis on Airbnb social media data
 
 ## The Problem
-Emotions are a factor in customer's purchase decisions. With the rise of social media is has become easier than ever for customers' to share their emotions about their purchase decisions for others to see. The good thing is there is a trove of data of customer reviews and thoughts of companies. However, it would not be sustainable to go through each tweet, post, and mention to determine customer sentiment.
+Emotions are a factor in customers' purchase decisions. With the rise of social media it has become easier than ever for customers' to share their emotions about their purchases for others to see. The good thing is there is now a trove of data of customer reviews and thoughts of companies. However, it would not be sustainable to go through each tweet, post, and mention to determine customer sentiment.
 
 ## The Solution
-Using Natural Language Processing brands can turn how customers feel into actionable business data. Tweets, posts, news, and mentions can be ran through tools/models that place a sentiment label (ex: Negative, Postive) on the data. This can companies an overall view of how customers feel about their brand.
+Using Natural Language Processing brands can turn how customers feel into actionable business data. Tweets, posts, news, and mentions can be ran through tools/models that place a sentiment label (ex: Negative, Postive) on the data. This can give companies an overall view of how customers feel about their brand.
 
 ## The Data
 I wanted to analyze Airbnb data for this project since I've started to see more tweets mentioning that they have started to consider hotels again over Airbnb.
