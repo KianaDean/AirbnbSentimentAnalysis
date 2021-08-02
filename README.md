@@ -1,4 +1,5 @@
 # AirbnbSentimentAnalysis
+Sentiment analysis on Airbnb social media data
 
 ## The Problem
 Emotions are a factor in customer's purchase decisions. With the rise of social media is has become easier than ever for customers' to share their emotions about their purchase decisions for others to see. The good thing is there is a trove of data of customer reviews and thoughts of companies. However, it would not be sustainable to go through each tweet, post, and mention to determine customer sentiment.
