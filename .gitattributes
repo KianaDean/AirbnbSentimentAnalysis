@@ -1,2 +1,2 @@
 *.pbix linguist-detectable=true
-*.Rmb linguist-detectable=true
+*.Rmd linguist-detectable=true
